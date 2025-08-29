@@ -1,0 +1,119 @@
+---
+title: "coding 2"
+author: "cheng chun fai"
+date: "2025-08-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = TRUE, warning = TRUE,
+                      fig.path = "figs/", fig.width = 8, fig.height = 4, dpi = 300)
+set.seed(123)
+pkgs <- c("quantmod","ggplot2","psych","tseries","forecast","gridExtra","zoo")
+to_install <- setdiff(pkgs, rownames(installed.packages()))
+if (length(to_install)) install.packages(to_install)
+```
+
+```{r data}
+### Data Retrieval
+getSymbols("GOOG", src = "yahoo",
+           from = as.Date("2007-01-01"),
+           to   = as.Date("2025-05-31"),
+           auto.assign = TRUE)
+```
+
+```{r}
+
+### EDA
+# Quick preview
+head(GOOG_monthly$GOOG.Close, 10)
+plot(GOOG_monthly$GOOG.Volume, main = "GOOG Monthly Volume")
+
+# Visualization using ggplot
+GOOG.df <- data.frame(date = index(GOOG_monthly), coredata(GOOG_monthly))
+ggplot(GOOG.df, aes(date, GOOG.Close)) +
+  geom_line() +
+  labs(title = "Google Monthly Closing Price", x = "Date", y = "Close")
+psych::describe(GOOG_monthly)
+
+```
+
+```{r}
+
+### Time Series Processing (renamed `GOOG_close_ts` to `GOOG_close`)
+GOOG_close <- ts(GOOG_monthly$GOOG.Close, frequency = 12, start = c(2007, 1))
+
+# Missing value check and handling (using the same object name)）
+sum(is.na(GOOG_close))
+GOOG_close_ff     <- zoo::na.locf(GOOG_close)
+GOOG_close_interp <- zoo::na.approx(GOOG_close)
+sum(is.na(GOOG_close_interp))
+
+# Augmented Dickey-Fuller (ADF) Test
+tseries::adf.test(GOOG_close)
+GOOG_close_diff <- diff(GOOG_close)
+tseries::adf.test(GOOG_close_diff)
+
+plot(GOOG_close_diff, main = "Differenced Google Closing Prices")
+plot(decompose(GOOG_close))
+title("Decomposition of Google Closing Prices")
+par(mfrow=c(1,2)); acf(GOOG_close); pacf(GOOG_close); par(mfrow=c(1,1))
+
+```
+
+```{r}
+
+### Modeling, Forecasting, and Diagnostics (removed View; kept knittable tables)
+train <- window(GOOG_close, end = c(2023, 5))
+test  <- window(GOOG_close, start = c(2023, 6))
+
+model <- forecast::auto.arima(train, seasonal = TRUE, stepwise = FALSE, approximation = FALSE)
+summary(model)
+
+fc <- forecast::forecast(model, h = length(test))
+
+# Coefficient table (knittable)
+coefs <- coef(model); se <- sqrt(diag(vcov(model)))
+t_stat <- coefs / se; p_val <- 2 * (1 - pnorm(abs(t_stat)))
+results <- data.frame(Coefficient=round(coefs,4), Std_Error=round(se,4),
+                      t_Statistic=round(t_stat,4), P_Value=round(p_val,4))
+knitr::kable(results, caption = "ARIMA Coefficients and Significance")
+
+# Model diagnostics
+tsdiag(model)
+checkresiduals(model)
+
+# Multi-horizon forecast evaluation
+accuracy_6  <- accuracy(window(fc$mean, end = time(fc$mean)[6]),  window(test, end = time(test)[6]))
+accuracy_12 <- accuracy(window(fc$mean, end = time(fc$mean)[12]), window(test, end = time(test)[12]))
+accuracy_18 <- accuracy(window(fc$mean, end = time(fc$mean)[18]), window(test, end = time(test)[18]))
+accuracy_24 <- accuracy(fc$mean, test)
+
+performance <- data.frame(
+  Six.Months        = accuracy_6[1,],
+  Twelve.Months     = accuracy_12[1,],
+  Eighteen.Months   = accuracy_18[1,],
+  Twenty.Four.Months= accuracy_24[1,]
+)
+rownames(performance) <- colnames(accuracy_6)
+knitr::kable(performance, caption = "Forecast Accuracy at Multiple Horizons")
+
+# Multi-horizon forecast plots (arranged with gridExtra)
+make_plot <- function(h){
+  p <- autoplot(forecast(model, h = h)) +
+    ggtitle(paste("Google Stock Price Forecast –", h, "Months")) +
+    xlab("Time") + ylab("Closing Stock Price")
+  return(p)
+}
+gridExtra::grid.arrange(grobs = lapply(c(6,12,18,24), make_plot), ncol = 2)
+```
+
+```{r}
+
+### Session info
+sessionInfo()
+```
+
+
+
+           
