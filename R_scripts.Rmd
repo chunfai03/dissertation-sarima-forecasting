@@ -1,1 +1,153 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+）
+
+## R Script for Google Stock Price Analysis
+```{r}
+library(quantmod)
+getSymbols("GOOG", src = "yahoo",
+           from = as.Date("2007-01-01"),
+           to = as.Date("2025-05-31"),
+           auto.assign = TRUE)
+
+## Convert to monthly data + organize
+
+GOOG_monthly <- to.monthly(GOOG, indexAt = "lastof", OHLC = TRUE)
+
+head(GOOG_monthly)
+
+head(GOOG_monthly$GOOG.Close, 10)
+
+plot(GOOG_monthly$GOOG.Volume)
+
+head(GOOG_monthly,10)
+
+tail(GOOG_monthly,10)
+
+str(GOOG_monthly)
+
+chartSeries(GOOG_monthly)
+
+GOOG.df <- data.frame(date = index(GOOG_monthly), coredata(GOOG_monthly))
+GOOG.df
+
+## Exploratory Data Analysis (EDA) + Descriptive Statistics
+
+library(ggplot2)
+ggplot(GOOG.df, aes(x = date, y = GOOG.Close)) +
+  geom_line(color = "steelblue") +
+  labs(title = "Google Closing Stock Prices", x = "Date", y = "Closing Price")
+
+
+library(psych)
+describe(GOOG_monthly)
+
+## Time series transformation + ADF test
+
+GOOG_close <- GOOG_monthly$GOOG.Close
+GOOG_close <- ts(GOOG_close, frequency = 12, start = c(2007, 1))
+GOOG_close
+
+adf.test(GOOG_close)
+
+GOOG_close_diff <- diff(GOOG_close)
+adf.test(GOOG_close_diff)
+plot(GOOG_close_diff, main = "Differenced Google Closing Prices", col = "blue")
+
+plot(decompose(GOOG_close))#, main = "Times Series Decomposition of Google Closing Stock Price Data")
+
+par(mfrow=c(1,2))  # Arrange plots side by side
+acf(GOOG_close, main="Autocorrelation Function Plot")  # Identify MA terms
+pacf(GOOG_close, main="Partial Autocorrelation Function Plot")  # Identify AR terms
+par(mfrow=c(1,1))  # Reset plotting layout
+
+## Model selction（SARIMA）
+
+library(forecast)
+model <- auto.arima(GOOG_close, seasonal = TRUE, stepwise = FALSE, approximation = FALSE)
+summary(model)
+
+##Statistical testing of model parameters
+
+# Extract coefficients and standard errors
+coefs <- coef(model)
+se <- sqrt(diag(vcov(model)))
+
+# Compute t-statistics and p-values
+t_stat <- coefs / se
+p_val <- 2 * (1 - pnorm(abs(t_stat)))  # two-tailed p-values
+
+# Create the results table
+results <- data.frame(
+  Coefficient = round(coefs, 4),
+  Std_Error = round(se, 4),
+  t_Statistic = round(t_stat, 4),
+  P_Value = round(p_val, 4)
+)
+
+## data check
+
+# Print the table
+View(print(results))
+tsdiag(model)  # Diagnostic plots
+checkresiduals(model)  # Check residuals for white noise
+
+##Forecasting
+
+forecast_values <- forecast(model, h=6)  # Forecast next 6 months
+head(forecast_values)
+
+forecast_values_12 <- forecast(model, h=12)  # Forecast next 12 months
+head(forecast_values_12)
+
+
+forecast_values_18 <- forecast(model, h=18)  # Forecast next 18 months
+head(forecast_values_18)
+
+forecast_values_24 <- forecast(model, h=24)  # Forecast next 24 months
+head(forecast_values_24)
+
+performance <- data.frame(
+  Six.Months = c(accuracy(forecast_values)),
+  Twelve.Months = c(accuracy(forecast_values_12)),
+  Eighteen.Months = c(accuracy(forecast_values_18)),
+  Twenty.Four.Months = c(accuracy(forecast_values_24))
+)
+row_names <- c("ME", "RMSE", "MAE", "MPE", "MAPE", "MASE", "ACF1") # Example row names
+rownames(performance) <- row_names
+
+performance
+
+plot(forecast_values, main="ARIMA Forecast for Google Closing Stock Prices (6 Months)", col="blue")
+grid()
+
+plot(forecast_values,
+     main = "Google Stock Price Forecast (6 Months)",
+     xlab = "Time",
+     ylab = "Stock Price",
+     flty = 1, # Line type for forecast mean
+     fcol = "red", # Color for forecast mean
+     shadecols = c("lightblue", "grey"))
+
+autoplot(forecast_values) +
+#   labs(title = "Google Stock Price Forecast (6 Months)",
+#        x = "Time",
+#        y = "Stock Price") +
+#   theme_minimal()
+  ggtitle("Google Six Months Closing Stock Price Forecast") +
+  xlab("Time") +
+  ylab("Closing Stock Price")
+
+fcst <- forecast_values
+fcst
+```
+
+
+
+
+
+
 
